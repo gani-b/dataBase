@@ -86,6 +86,7 @@ public class HeapFile implements DbFile {
 
     File fileHolder;
     TupleDesc schemeHolder;
+    HashMap<Integer,Boolean> pageHolder;
     /**
      * Constructs a heap file backed by the specified file.
      * 
@@ -97,6 +98,7 @@ public class HeapFile implements DbFile {
         // some code goes here
         fileHolder=f;
         schemeHolder=td;
+        pageHolder=new HashMap<Integer,Boolean>();
         
     }
 
@@ -180,16 +182,48 @@ public class HeapFile implements DbFile {
     public ArrayList<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
-        return null;
         // not necessary for proj1
+        BufferPool holder=Database.getBufferPool();
+        int bound=numPages();
+        for(int i=0;i<bound;i++){
+            HeapPageId temp=new HeapPageId(getId(),i);
+            HeapPage candidate=(HeapPage)holder.getPage(tid,temp,Permissions.READ_WRITE);
+            if(candidate.getNumEmptySlots()>0){
+                candidate.insertTuple(t);
+                candidate.markDirty(true,tid);
+                ArrayList<Page> result=new ArrayList<Page>();
+                result.add(candidate);
+                return result;
+            }
+        }
+        byte[] add= HeapPage.createEmptyPageData();
+        HeapPageId temp2=new HeapPageId(getId(),bound);
+        HeapPage candidate2= new HeapPage(temp2,add);
+        candidate2.insertTuple(t);
+        candidate2.markDirty(true,tid);
+        writePage(candidate2);
+        ArrayList<Page> result=new ArrayList<Page>();
+        result.add(candidate2);
+        return result;
+
+
     }
 
     // see DbFile.java for javadocs
     public Page deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
         // some code goes here
-        return null;
         // not necessary for proj1
+        if(t.getRecordId()!=null && t.getRecordId().getPageId().getTableId()==getId()){
+            BufferPool holder=Database.getBufferPool();
+            HeapPage dest=(HeapPage)holder.getPage(tid,t.getRecordId().getPageId(),Permissions.READ_WRITE);
+            dest.deleteTuple(t);
+            dest.markDirty(true,tid);
+            return dest;
+        } else {
+            throw new DbException("Tuple not in file");
+        }
+            
     }
 
     // see DbFile.java for javadocs
