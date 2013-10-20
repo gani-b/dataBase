@@ -23,6 +23,7 @@ public class Join extends Operator {
     JoinPredicate preHolder;
     DbIterator[] holder;
     Tuple hold;
+    int nullCounter;
     public Join(JoinPredicate p, DbIterator child1, DbIterator child2) {
         // some code goes here
         preHolder=p;
@@ -87,6 +88,7 @@ public class Join extends Operator {
         holder[1].open();
         hold=null;
         super.open();
+        nullCounter=0;
     }
 
     public void close() {
@@ -102,6 +104,7 @@ public class Join extends Operator {
         holder[0].rewind();
         holder[1].rewind();
         hold=null;
+        nullCounter=0;
     }
 
     /**
@@ -125,14 +128,13 @@ public class Join extends Operator {
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
         Tuple x=hold;
-        boolean iterate=holder[0].hasNext();
         if(x==null && holder[0].hasNext()){
                 x=holder[0].next();
                 holder[1].rewind();
         }
 
 
-        while(holder[0].hasNext() || holder[1].hasNext()){
+        while(nullCounter<1){
             while(holder[1].hasNext()){
                 Tuple y=holder[1].next();
                 if(preHolder.filter(x,y)){
@@ -151,13 +153,13 @@ public class Join extends Operator {
                     return result;
                 }
             }
+            holder[1].rewind();
             if(holder[0].hasNext()){
-                holder[1].rewind();
                 x=holder[0].next();
+                hold=x;
+            } else {
+                nullCounter++;
             }
-
-            hold=x;
-            
         }
         hold=null;
         return null;                

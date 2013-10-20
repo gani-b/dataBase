@@ -19,6 +19,8 @@ public class HeapPage implements Page {
     byte header[];
     Tuple tuples[];
     int numSlots;
+    boolean dirty;
+    TransactionId dirtyTid;
 
     byte[] oldData;
 
@@ -42,6 +44,8 @@ public class HeapPage implements Page {
         this.pid = id;
         this.td = Database.getCatalog().getTupleDesc(id.getTableId());
         this.numSlots = getNumTuples();
+        dirty=false;
+        dirtyTid=null;
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(data));
 
         // allocate and read the header slots of this page
@@ -240,7 +244,7 @@ public class HeapPage implements Page {
         // some code goes here
         // not necessary for lab1
         RecordId holder=t.getRecordId();
-        if(holder.getPageId().equals(pid) && isSlotUsed(holder.tupleno())){
+        if(holder != null && holder.getPageId().equals(pid) && isSlotUsed(holder.tupleno())){
             t.setRecordId(null);
             markSlotUsed(holder.tupleno(),false);
         } else {
@@ -260,7 +264,19 @@ public class HeapPage implements Page {
     public void insertTuple(Tuple t) throws DbException {
         // some code goes here
         // not necessary for lab1
-        RecordId
+        int boundary=getNumTuples();
+        if(getNumEmptySlots()==0 || !(t.getTupleDesc().equals(td))){
+            throw new DbException("Page is full or tupleDesc does not match");
+        }
+        for(int i=0;i<boundary;i++){
+            if(!isSlotUsed(i)){
+                markSlotUsed(i,true);
+                tuples[i]=t;
+                RecordId ids=new RecordId(pid,i);
+                t.setRecordId(ids);
+                return;
+            }
+        }
     }
 
     /**
@@ -270,6 +286,10 @@ public class HeapPage implements Page {
     public void markDirty(boolean dirty, TransactionId tid) {
         // some code goes here
 	// not necessary for lab1
+            this.dirty=dirty;
+            dirtyTid=tid;
+
+
     }
 
     /**
@@ -278,7 +298,11 @@ public class HeapPage implements Page {
     public TransactionId isDirty() {
         // some code goes here
 	// Not necessary for lab1
-        return null;      
+        if(dirty){
+            return dirtyTid;
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -327,9 +351,9 @@ hello:  for(int i=0;i<header.length;i++){
         int position=i/8;
         int bit=i%8;
         if(value){
-            (header[position]|0x01<<bit);
+            header[position]=(byte)(header[position]|0x01<<bit);
         } else {
-            (((header[position]^0xFF)|(0x01<<bit))^0xFF);
+            header[position]=(byte)(((header[position]^0xFF)|(0x01<<bit))^0xFF);
         }
     }
 
