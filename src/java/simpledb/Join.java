@@ -22,8 +22,7 @@ public class Join extends Operator {
      */
     JoinPredicate preHolder;
     DbIterator[] holder;
-    Tuple x;
-    Tuple y;
+    Tuple hold;
     public Join(JoinPredicate p, DbIterator child1, DbIterator child2) {
         // some code goes here
         preHolder=p;
@@ -86,7 +85,7 @@ public class Join extends Operator {
         // some code goes here
         holder[0].open();
         holder[1].open();
-        x=holder[0].next();
+        hold=null;
         super.open();
     }
 
@@ -102,6 +101,7 @@ public class Join extends Operator {
         // some code goes here
         holder[0].rewind();
         holder[1].rewind();
+        hold=null;
     }
 
     /**
@@ -124,15 +124,17 @@ public class Join extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
- 
-        while(holder[0].hasNext()){
-            if(!(holder[1].hasNext())){
+        Tuple x=hold;
+        boolean iterate=holder[0].hasNext();
+        if(x==null && holder[0].hasNext()){
                 x=holder[0].next();
                 holder[1].rewind();
-            }
-            
+        }
+
+
+        while(holder[0].hasNext() || holder[1].hasNext()){
             while(holder[1].hasNext()){
-                y=holder[1].next();
+                Tuple y=holder[1].next();
                 if(preHolder.filter(x,y)){
                     Tuple result= new Tuple(getTupleDesc());
                     int bound=getTupleDesc().numFields();
@@ -145,11 +147,19 @@ public class Join extends Operator {
                             result.setField(i,y.getField(i-first));
                         }
                     }
+                    hold=x;
                     return result;
                 }
             }
+            if(holder[0].hasNext()){
+                holder[1].rewind();
+                x=holder[0].next();
+            }
+
+            hold=x;
             
         }
+        hold=null;
         return null;                
     }
 
