@@ -39,7 +39,7 @@ public class SeqScan implements DbIterator {
         table=tableid;
         alias=tableAlias;
         open=false;
-        
+        file=(HeapFile)Database.getCatalog().getDbFile(table);
     }
 
     /**

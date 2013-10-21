@@ -199,12 +199,12 @@ public class HeapFile implements DbFile {
         byte[] add= HeapPage.createEmptyPageData();
         HeapPageId temp2=new HeapPageId(getId(),bound);
         HeapPage candidate2= new HeapPage(temp2,add);
-        candidate2.insertTuple(t);
-        candidate2.markDirty(true,tid);
         writePage(candidate2);
-        holder.getPage(tid,temp2,Permissions.READ_WRITE);
+        HeapPage candidate3=(HeapPage)holder.getPage(tid,temp2,Permissions.READ_WRITE);
+        candidate3.insertTuple(t);
+        candidate3.markDirty(true,tid);
         ArrayList<Page> result=new ArrayList<Page>();
-        result.add(candidate2);
+        result.add(candidate3);
         return result;
 
 
