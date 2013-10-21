@@ -23,8 +23,8 @@ public class Catalog {
 
         public Table(DbFile fileIn,String nameIn,String pkeyIn){
             file=fileIn;
-            nameIn=name;
-            pkeyIn=pkey;
+            name=nameIn;
+            pkey=pkeyIn;
         }
 
     }
@@ -154,7 +154,7 @@ public class Catalog {
      */
     public void loadSchema(String catalogFile) {
         String line = "";
-        String baseFolder=new File(catalogFile).getParent();
+        File baseFolder=new File(catalogFile).getParentFile();
         try {
             BufferedReader br = new BufferedReader(new FileReader(new File(catalogFile)));
             
@@ -190,7 +190,7 @@ public class Catalog {
                 Type[] typeAr = types.toArray(new Type[0]);
                 String[] namesAr = names.toArray(new String[0]);
                 TupleDesc t = new TupleDesc(typeAr, namesAr);
-                HeapFile tabHf = new HeapFile(new File(baseFolder+"/"+name + ".dat"), t);
+                HeapFile tabHf = new HeapFile(new File(baseFolder,name + ".dat"), t);
                 addTable(tabHf,name,primaryKey);
                 System.out.println("Added table : " + name + " with schema " + t);
             }

@@ -137,7 +137,7 @@ public class StringAggregator implements Aggregator {
         }
         for (String key : strhash.keySet()) {
             Tuple t = new Tuple(td);
-            int val = inthash.get(key);
+            int val = strhash.get(key);
 
             StringField gb = new StringField(key, Type.STRING_LEN);
             IntField a = new IntField(val);

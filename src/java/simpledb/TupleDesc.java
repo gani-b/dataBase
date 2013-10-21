@@ -251,6 +251,6 @@ public class TupleDesc implements Serializable {
             }
 
         }
-        return "";
+        return s;
     }
 }

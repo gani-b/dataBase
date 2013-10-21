@@ -153,7 +153,9 @@ public class HeapFile implements DbFile {
             }
         
         }catch (IOException e){
-            throw new RuntimeException();
+             System.out.println("heyyy");
+             e.printStackTrace();
+             throw new RuntimeException();
         }
     }
 
