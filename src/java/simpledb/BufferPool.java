@@ -21,6 +21,7 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
     
     HashMap <PageId,Page> pool;
+    LinkedList otherPool;
     int pages;
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -31,6 +32,7 @@ public class BufferPool {
         // some code goes here
         pool=new HashMap<PageId,Page>(numPages);
         pages=numPages;
+        otherPool=new LinkedList();
     }
 
     /**
@@ -52,16 +54,20 @@ public class BufferPool {
         throws TransactionAbortedException, DbException {
         // some code goes here
         if(pool.containsKey(pid)){
+            int index=otherPool.indexOf(pid);
+            PageId temp=(PageId)otherPool.remove(index);
+            otherPool.addLast(temp);
             return pool.get(pid);
         } else {
-            if(pool.size()==pages){
-                throw new DbException("It's full");
-            } else {
-                DbFile temp=Database.getCatalog().getDbFile(pid.getTableId());
-                Page temp1=temp.readPage(pid);
-                pool.put(pid,temp1);
-                return temp1;
+            if(otherPool.size()==pages){
+                evictPage();
             }
+            DbFile temp=Database.getCatalog().getDbFile(pid.getTableId());
+            Page temp1=temp.readPage(pid);
+            otherPool.addLast(pid);
+            pool.put(pid,temp1);
+            return temp1;
+            
         }
     }
 
@@ -128,6 +134,7 @@ public class BufferPool {
         // some code goes here
         // not necessary for proj1
         Database.getCatalog().getDbFile(tableId).insertTuple(tid,t);
+
     }
 
     /**
@@ -158,6 +165,10 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for proj1
+        ListIterator<PageId> iter=otherPool.listIterator(0);
+        while(iter.hasNext()){
+            flushPage((PageId)iter.next());
+        }
 
     }
 
@@ -168,6 +179,7 @@ public class BufferPool {
     */
     public synchronized void discardPage(PageId pid) {
         // some code goes here
+
     }
 
     /**
@@ -177,6 +189,10 @@ public class BufferPool {
     private synchronized  void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for proj1
+        HeapFile temp=(HeapFile)Database.getCatalog().getDbFile(pid.getTableId());
+        HeapPage temp1=(HeapPage)temp.readPage(pid);
+        temp.writePage(temp1);
+
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -193,6 +209,18 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for proj1
+        PageId temp=(PageId)otherPool.removeFirst();
+        HeapFile tempor=(HeapFile)Database.getCatalog().getDbFile(temp.getTableId());
+        HeapPage temp1=(HeapPage)tempor.readPage(temp);
+        if(temp1.isDirty()!=null){
+            try{
+                flushPage(temp);
+            }catch(IOException e){
+                throw new DbException("error flushing page");
+            }
+        }
+        pool.remove(temp);
+
     }
 
 }

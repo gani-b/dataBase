@@ -202,6 +202,7 @@ public class HeapFile implements DbFile {
         candidate2.insertTuple(t);
         candidate2.markDirty(true,tid);
         writePage(candidate2);
+        holder.getPage(tid,temp2,Permissions.READ_WRITE);
         ArrayList<Page> result=new ArrayList<Page>();
         result.add(candidate2);
         return result;
