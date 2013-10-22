@@ -200,6 +200,16 @@ public class BufferPool {
     public synchronized  void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for proj1
+         ListIterator<PageId> iter=otherPool.listIterator(0);
+         while(iter.hasNext()){
+             HeapPageId temp1=(HeapPageId)iter.next();
+             HeapPage temp=(HeapPage)pool.get(temp1);
+             if(tid != null && temp.isDirty()!=null && tid.equals(temp.isDirty())){
+                 flushPage(temp1);
+             }
+         }
+
+
     }
 
     /**

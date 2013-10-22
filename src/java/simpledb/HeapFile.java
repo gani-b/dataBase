@@ -146,6 +146,7 @@ public class HeapFile implements DbFile {
                 byte[] data=new byte[BufferPool.PAGE_SIZE];
                 temp.seek(offset);
                 temp.read(data);
+                temp.close();
                 HeapPage result=new HeapPage((HeapPageId)pid,data);
                 return result;
             } else {
