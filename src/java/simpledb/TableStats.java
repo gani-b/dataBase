@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
 
 /**
  * TableStats represents statistics (e.g., histograms) about base tables in a
@@ -76,6 +77,14 @@ public class TableStats {
      *            The cost per page of IO. This doesn't differentiate between
      *            sequential-scan IO and disk seeks.
      */
+     int cost;
+     int id;
+     int tuples;
+     int pages;
+     HeapFile file;
+     ArrayList histograms;
+     HashMap<Integer,Integer> max;
+     HashMap<Integer,Integer> min;
     public TableStats(int tableid, int ioCostPerPage) {
         // For this function, you'll have to get the
         // DbFile for the table in question,
@@ -85,6 +94,75 @@ public class TableStats {
         // necessarily have to (for example) do everything
         // in a single scan of the table.
         // some code goes here
+        tuples=0;
+        int index=0;
+        cost=ioCostPerPage;
+        id=tableid;
+        file=(HeapFile)Database.getCatalog().getDbFile(id);
+        pages=file.numPages();
+        histograms=new ArrayList();
+        max=new HashMap<Integer,Integer>();
+        min=new HashMap<Integer,Integer>();
+        TransactionId trans=new TransactionId();
+        DbFileIterator iter=file.iterator(trans);
+        try{
+            iter.open();
+            while(iter.hasNext()){
+                tuples++;
+                Tuple now=iter.next();
+                Iterator it=now.fields();
+                index=0;
+                while(it.hasNext()){
+                    Field temp=(Field)it.next();
+                    if(temp instanceof IntField){
+                        int value=((IntField)temp).getValue();
+                        if(max.get(index)==null || min.get(index)==null){
+                            max.put(index,value);
+                            min.put(index,value);
+                        } else {
+                            if(max.get(index)<value){
+                                max.put(index,value);
+                            }
+                            if(min.get(index)>value){
+                                min.put(index,value);
+                            }
+                        }
+                    }
+                    index++;
+                }
+            }
+            iter.close();
+            for(int i=0;i<index;i++){
+                if(max.get(i)!=null){
+                    IntHistogram temp1=new IntHistogram(NUM_HIST_BINS,min.get(i),max.get(i));
+                    histograms.add(i,temp1);
+                } else {
+                    histograms.add(i,new StringHistogram(NUM_HIST_BINS));
+                }
+            }
+            iter.open();
+            while(iter.hasNext()){
+                Tuple now=iter.next();
+                Iterator it=now.fields();
+                index=0;
+                while(it.hasNext()){
+                    Field temp=(Field)it.next();
+                    if(temp instanceof IntField){
+                        int value=((IntField)temp).getValue();
+                        ((IntHistogram)histograms.get(index)).addValue(value);
+                    } else {
+                        String vals=((StringField)temp).getValue();
+                        ((StringHistogram)histograms.get(index)).addValue(vals);
+                    }
+                    index++;
+                }
+            }
+            iter.close();
+        } catch(DbException e){
+            System.out.println(e);
+        } catch(TransactionAbortedException e1){
+            System.out.println(e1);
+        }
     }
 
     /**
@@ -101,7 +179,7 @@ public class TableStats {
      */
     public double estimateScanCost() {
         // some code goes here
-        return 0;
+        return (double)pages*2*cost;
     }
 
     /**
@@ -115,7 +193,9 @@ public class TableStats {
      */
     public int estimateTableCardinality(double selectivityFactor) {
         // some code goes here
-        return 0;
+        double temp=tuples*selectivityFactor;
+        int result=(int)temp;
+        return result;
     }
 
     /**
@@ -148,7 +228,15 @@ public class TableStats {
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
         // some code goes here
-        return 1.0;
+        if(constant instanceof StringField){
+            String temps=((StringField)constant).getValue();
+            StringHistogram temp=(StringHistogram)histograms.get(field);
+            return temp.estimateSelectivity(op,temps);
+        } else {
+            int value=((IntField)constant).getValue();
+            IntHistogram temp1=(IntHistogram)histograms.get(field);
+            return temp1.estimateSelectivity(op,value);
+        }
     }
 
     /**
@@ -156,7 +244,7 @@ public class TableStats {
      * */
     public int totalTuples() {
         // some code goes here
-        return 0;
+        return tuples;
     }
 
 }
