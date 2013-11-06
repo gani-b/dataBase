@@ -4,6 +4,7 @@ import java.util.*;
 import java.lang.Math;
 import javax.swing.*;
 import javax.swing.tree.*;
+import java.lang.Double;
 
 /**
  * The JoinOptimizer class is responsible for ordering a series of joins
@@ -238,17 +239,28 @@ public class JoinOptimizer {
         for(int i=1;i<outer+1;i++){
             Set<Set<LogicalJoinNode>> temp= enumerateSubsets(joins,i);
             for(Set<LogicalJoinNode> in : temp){
-                Set<LogicalJoinNode> bestPlan=null;
-                Set<Set<LogicalJoinNode>> temp1=enumerateSubsets(joins,i-1);
+                Vector<LogicalJoinNode> bestPlan=null;
+                Vector<LogicalJoinNode> vect=new Vector<LogicalJoinNode>(in);
+                Set<Set<LogicalJoinNode>> temp1=enumerateSubsets(vect,i-1);
+                double bestPlanCost=Double.MAX_VALUE;
+                int cardinal=0;
                 for( Set<LogicalJoinNode> inside :temp1){
-                    CostCard tempPlan=computeCostAndcardOfSubplan()
-
+                    Set<LogicalJoinNode> temporary=(Set<LogicalJoinNode>)(((HashSet<LogicalJoinNode>)in).clone());
+                    temporary.removeAll(inside);
+                    LogicalJoinNode leftOver=temporary.iterator().next();
+                    CostCard best=computeCostAndCardOfSubplan(stats,filterSelectivities,leftOver,in,bestPlanCost,optJoin);
+                    if(best !=null){
+                        bestPlan=best.plan;
+                        bestPlanCost=best.cost;
+                        cardinal=best.card;
+                    }
                 }
+                optJoin.addPlan(in,bestPlanCost,cardinal,bestPlan);
             }
 
 
         }
-        return joins;
+        return optJoin.getOrder(new HashSet<LogicalJoinNode>(joins));
     }
 
     // ===================== Private Methods =================================
