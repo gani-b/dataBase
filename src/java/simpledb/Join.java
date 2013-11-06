@@ -132,7 +132,9 @@ public class Join extends Operator {
                 x=holder[0].next();
                 holder[1].rewind();
         }
-
+        if(x==null && !holder[0].hasNext()){
+            return null;
+        }
 
         while(nullCounter<1){
             while(holder[1].hasNext()){
