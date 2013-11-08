@@ -234,6 +234,51 @@ public class JoinOptimizer {
 
         // some code goes here
         //Replace the following
+
+        if(joins==null){
+            return new Vector<LogicalJoinNode>();
+        }
+
+        // joins = set of join nodes
+        PlanCache optjoin = new PlanCache();
+
+        // for (i in 1...|j|): First find best plan for single join, then for two joins, etc. 
+            for (int i = 1; i < joins.size() + 1; i++) {
+                // A set of all length i - 1 subsets of joins
+                Set<Set<LogicalJoinNode>> joinsub = enumerateSubsets(joins, i);
+                // for s in {all length i - 1 subsets of joins} // Looking at a concrete subset of joins
+                for (Set<LogicalJoinNode> s : joinsub) {
+                    // bestPlan = {}  // We want to find the best plan for this concrete subset 
+                    CostCard bestPlanNow = new CostCard();
+                    bestPlanNow.cost = Double.MAX_VALUE;
+                    bestPlanNow.card = Integer.MAX_VALUE;
+                    bestPlanNow.plan = null;
+                    // for s' in {all length i-1 subsets of s} 
+                    for (LogicalJoinNode currJoinNode : s) {
+                        CostCard tempBestPlan = computeCostAndCardOfSubplan(stats,filterSelectivities,currJoinNode,s,bestPlanNow.cost,optjoin);
+                        //compare costs of plans
+                        if (tempBestPlan != null && (tempBestPlan.cost < bestPlanNow.cost)) {
+                            bestPlanNow = tempBestPlan;
+                        }
+                    }
+                    // add plan
+                    //System.out.println("BEST PLAN COST " + bestPlanNow.cost);
+                    optjoin.addPlan(s, bestPlanNow.cost, bestPlanNow.card, bestPlanNow.plan);
+                }
+            }
+
+            //HashSet<LogicalJoinNode> setsToMigrate = new HashSet<LogicalJoinNode>();
+            //for (LogicalJoinNode currentNode : joins) {
+            //    setsToMigrate.add(currentNode);
+            //}
+
+
+            Set<Set<LogicalJoinNode>> temp = enumerateSubsets(joins, joins.size());
+            Set<LogicalJoinNode> res = temp.iterator().next();
+
+            return optjoin.getOrder(res);
+
+    /* (WORKING SLOW CODE)
         PlanCache optJoin = new PlanCache();
         int outer=joins.size();
         for(int i=1;i<outer+1;i++){
@@ -257,10 +302,9 @@ public class JoinOptimizer {
                 }
                 optJoin.addPlan(in,bestPlanCost,cardinal,bestPlan);
             }
-
-
         }
         return optJoin.getOrder(new HashSet<LogicalJoinNode>(joins));
+    */
     }
 
     // ===================== Private Methods =================================

@@ -204,6 +204,12 @@ public class IntHistogram {
     public String toString() {
 
         // some code goes here
-        return null;
+        String result="";
+        for(int i=0;i<buckets;i++){
+            result+="bucket number "+i+" has "+bucketList[i]+" elements \n";
+        }
+        return result;
+    
     }
+
 }
