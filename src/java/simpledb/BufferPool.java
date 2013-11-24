@@ -2,6 +2,7 @@ package simpledb;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 /**
  * BufferPool manages the reading and writing of pages into memory from
  * disk. Access methods call into it to retrieve pages, and it fetches
@@ -19,9 +20,77 @@ public class BufferPool {
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
+
+    public class LockManager {
+        ConcurrentHashMap <PageId,Permissions>pageLock;
+        ConcurrentHashMap <PageId,ArrayList<TransactionId>>pageTransactions;
+        ConcurrentHashMap <TransactionId,ArrayList<PageId>>transactionPages;
+        public LockManager (){
+            pageLock=new ConcurrentHashMap<PageId,Permissions> ();
+            pageTransactions=new ConcurrentHashMap<PageId,ArrayList<TransactionId>>();
+            transactionPages=new ConcurrentHashMap<TransactionId,ArrayList<PageId>>();
+        }
+        public synchronized boolean lockPage(PageId pid,TransactionId tid,Permissions perm){
+            Permissions currPerm=pageLock.get(pid);
+            ArrayList<TransactionId>temp=pageTransactions.get(pid);
+            if(currPerm==null || (currPerm==perm && perm==Permissions.READ_ONLY) || (currPerm==Permissions.READ_WRITE && temp.size()==1 && temp.get(0).equals(tid)) || (currPerm==Permissions.READ_ONLY && temp.size()==1 && temp.get(0).equals(tid))){
+                pageLock.put(pid,perm);
+                if(transactionPages.get(tid)==null){
+                    ArrayList<PageId> pids=new ArrayList<PageId>();
+                    pids.add(pid);
+                    transactionPages.put(tid,pids);
+                } else {
+                    ArrayList<PageId>pidTemp=transactionPages.get(tid);
+                    if(!pidTemp.contains(pid)){
+                        pidTemp.add(pid);
+                    }
+                }
+                if(pageTransactions.get(pid)==null){
+                    ArrayList<TransactionId> tids=new ArrayList<TransactionId>();
+                    tids.add(tid);
+                    pageTransactions.put(pid,tids);
+                } else {
+                    if(!temp.contains(tid)){
+                        temp.add(tid);
+                    }
+                }
+                return true;
+            }
+            return false;
+        }
+        public Permissions getLockType(PageId pid){
+            return pageLock.get(pid);
+        }
+        public boolean isLocked(TransactionId tid,PageId pid){
+            ArrayList<TransactionId> temp=pageTransactions.get(pid);
+            if(temp!=null && temp.contains(tid)){
+                return true;
+            } else {
+                return false;
+            }
+        }
+        public void releaseLock(PageId pid,TransactionId tid){
+            ArrayList<TransactionId> temp=pageTransactions.get(pid);
+            if(temp == null){
+                return;
+            }
+            if(temp.size()==1){
+                pageTransactions.remove(pid);
+                pageLock.remove(pid);
+            } else {
+                temp.remove(pid);
+            }
+        }
+        public ArrayList<PageId> getPageIds(TransactionId tid){
+            return transactionPages.get(tid);
+        }
+
+    }
+
     
-    HashMap <PageId,Page> pool;
-    LinkedList otherPool;
+    ConcurrentHashMap <PageId,Page> pool;
+    ConcurrentHashMap <PageId,ArrayList> lockManager;
+    LockManager manager;
     int pages;
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -30,9 +99,10 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
-        pool=new HashMap<PageId,Page>(numPages);
+        pool=new ConcurrentHashMap<PageId,Page>(numPages);
         pages=numPages;
-        otherPool=new LinkedList();
+        manager=new LockManager();
+        
     }
 
     /**
@@ -53,18 +123,25 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
+        int count=0;
+        while(!manager.lockPage(pid,tid,perm)){
+            count++;
+            if(count==6){
+                throw new TransactionAbortedException();
+            }
+            try{
+                Thread.sleep(50);
+            } catch(InterruptedException e){
+            }
+        }
         if(pool.containsKey(pid)){
-            int index=otherPool.indexOf(pid);
-            PageId temp=(PageId)otherPool.remove(index);
-            otherPool.addLast(temp);
             return pool.get(pid);
         } else {
-            if(otherPool.size()==pages){
+            if(pool.size()==pages){
                 evictPage();
             }
             DbFile temp=Database.getCatalog().getDbFile(pid.getTableId());
             Page temp1=temp.readPage(pid);
-            otherPool.addLast(pid);
             pool.put(pid,temp1);
             return temp1;
             
@@ -83,6 +160,8 @@ public class BufferPool {
     public  void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for proj1
+        manager.releaseLock(pid,tid);
+
     }
 
     /**
@@ -93,13 +172,14 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for proj1
+        transactionComplete(tid,true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for proj1
-        return false;
+        return manager.isLocked(tid,p);
     }
 
     /**
@@ -113,6 +193,21 @@ public class BufferPool {
         throws IOException {
         // some code goes here
         // not necessary for proj1
+        ArrayList<PageId>pids=manager.getPageIds(tid);
+        int size=pids.size();
+        if(commit){
+            flushPages(tid);
+        } else {
+            for(int i=0;i<size;i++){
+                PageId temp=pids.get(i);
+                HeapPage tempPage=(HeapPage)pool.get(temp);
+                if(tempPage != null){
+                    tempPage=tempPage.getBeforeImage();
+                    pool.put(temp,tempPage);
+                }
+                releasePage(tid,temp);
+            }
+        }
     }
 
     /**
@@ -129,7 +224,7 @@ public class BufferPool {
      * @param tableId the table to add the tuple to
      * @param t the tuple to add
      */
-    public void insertTuple(TransactionId tid, int tableId, Tuple t)
+    public synchronized void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for proj1
@@ -150,7 +245,7 @@ public class BufferPool {
      * @param tid the transaction adding the tuple.
      * @param t the tuple to add
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public synchronized void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, TransactionAbortedException {
         // some code goes here
         // not necessary for proj1
@@ -165,9 +260,9 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for proj1
-        ListIterator<PageId> iter=otherPool.listIterator(0);
-        while(iter.hasNext()){
-            flushPage((PageId)iter.next());
+        Enumeration <PageId>iter=pool.keys();
+        while(iter.hasMoreElements()){
+            flushPage((PageId)iter.nextElement());
         }
 
     }
@@ -190,8 +285,10 @@ public class BufferPool {
         // some code goes here
         // not necessary for proj1
         HeapFile temp=(HeapFile)Database.getCatalog().getDbFile(pid.getTableId());
-        HeapPage temp1=(HeapPage)temp.readPage(pid);
-        temp.writePage(temp1);
+        HeapPage temp1=(HeapPage)pool.get(pid);
+        if(temp1.isDirty()!=null){
+            temp.writePage(temp1);
+        }
 
     }
 
@@ -200,13 +297,14 @@ public class BufferPool {
     public synchronized  void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for proj1
-         ListIterator<PageId> iter=otherPool.listIterator(0);
-         while(iter.hasNext()){
-             HeapPageId temp1=(HeapPageId)iter.next();
+         Enumeration<PageId> iter=pool.keys();
+         while(iter.hasMoreElements()){
+             HeapPageId temp1=(HeapPageId)iter.nextElement();
              HeapPage temp=(HeapPage)pool.get(temp1);
-             if(tid != null && temp.isDirty()!=null && tid.equals(temp.isDirty())){
+             if(tid != null && temp!=null && temp.isDirty() !=null && tid.equals(temp.isDirty())){
                  flushPage(temp1);
              }
+             releasePage(tid,temp1);
          }
 
 
@@ -219,18 +317,19 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for proj1
-        PageId temp=(PageId)otherPool.removeFirst();
-        HeapFile tempor=(HeapFile)Database.getCatalog().getDbFile(temp.getTableId());
-        HeapPage temp1=(HeapPage)tempor.readPage(temp);
-        if(temp1.isDirty()!=null){
-            try{
-                flushPage(temp);
-            }catch(IOException e){
-                throw new DbException("error flushing page");
+        
+        Enumeration<Page> e=pool.elements();
+        while(e.hasMoreElements()){
+            Page temp=e.nextElement();
+            System.out.println(temp.isDirty());
+            if(temp.isDirty()==null){
+                PageId ids=temp.getId();
+                pool.remove(ids);
+                return;
             }
         }
-        pool.remove(temp);
-
+        throw new DbException("Full Bufferpool");
     }
+        
 
 }

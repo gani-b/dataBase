@@ -32,36 +32,28 @@ public class HeapFile implements DbFile {
             numPage=f.numPages();
 
         }
-        public void open(){
-            try{
-                temp=(HeapPage)Database.getBufferPool().getPage(tid,new HeapPageId(tableId,0),Permissions.READ_WRITE);
-                hasNext=temp.iterator();
-            }catch (TransactionAbortedException e){
-            }catch (DbException e1){
-            }
-            }
+        public void open() throws DbException,TransactionAbortedException{
+            temp=(HeapPage)Database.getBufferPool().getPage(tid,new HeapPageId(tableId,0),Permissions.READ_ONLY);
+            hasNext=temp.iterator();
+        }
 
-        public boolean hasNext(){
+        public boolean hasNext() throws DbException,TransactionAbortedException{
             if(hasNext==null){
                 return false;
             }
             if(hasNext.hasNext()){
                 return hasNext.hasNext();
-            }
-            try{
-                while(hasNextcounter<(numPage-1)){
+            } 
+            while(hasNextcounter<(numPage-1)){
                  hasNextcounter++;
-                 temp=(HeapPage)Database.getBufferPool().getPage(tid,new HeapPageId(tableId,hasNextcounter),Permissions.READ_WRITE);
+                 temp=(HeapPage)Database.getBufferPool().getPage(tid,new HeapPageId(tableId,hasNextcounter),Permissions.READ_ONLY);
                  hasNext=temp.iterator();
                  if(hasNext.hasNext()){
                      return true;
                  }
-                }
-                }catch(TransactionAbortedException e){
-                    return false;
-                } catch(DbException e1){
-                    return false;
-                }
+            }
+                
+            
                 return false;
         }
         public Tuple next(){
@@ -75,7 +67,7 @@ public class HeapFile implements DbFile {
             hasNextcounter=0;
             hasNext=null;
         }
-        public void rewind(){
+        public void rewind() throws DbException,TransactionAbortedException{
             close();
             open();
         }
@@ -154,7 +146,6 @@ public class HeapFile implements DbFile {
             }
         
         }catch (IOException e){
-             System.out.println("heyyy");
              e.printStackTrace();
              throw new RuntimeException();
         }
@@ -170,6 +161,7 @@ public class HeapFile implements DbFile {
         temp.seek(offset);
         temp.write(data);
         page.markDirty(false,null);
+        page.setBeforeImage();
 
     }
 
@@ -190,14 +182,19 @@ public class HeapFile implements DbFile {
         int bound=numPages();
         for(int i=0;i<bound;i++){
             HeapPageId temp=new HeapPageId(getId(),i);
-            HeapPage candidate=(HeapPage)holder.getPage(tid,temp,Permissions.READ_WRITE);
+            HeapPage candidate=(HeapPage)holder.getPage(tid,temp,Permissions.READ_ONLY);
+
             if(candidate.getNumEmptySlots()>0){
+                candidate=(HeapPage)holder.getPage(tid,temp,Permissions.READ_WRITE);
                 candidate.insertTuple(t);
                 candidate.markDirty(true,tid);
                 ArrayList<Page> result=new ArrayList<Page>();
                 result.add(candidate);
                 return result;
+            } else {
+                holder.releasePage(tid,temp);
             }
+
         }
         byte[] add= HeapPage.createEmptyPageData();
         HeapPageId temp2=new HeapPageId(getId(),bound);

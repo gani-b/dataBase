@@ -275,6 +275,9 @@ public class JoinOptimizer {
 
             Set<Set<LogicalJoinNode>> temp = enumerateSubsets(joins, joins.size());
             Set<LogicalJoinNode> res = temp.iterator().next();
+            if(explain){
+                printJoins(optjoin.getOrder(res),optjoin,stats,filterSelectivities);
+            }
 
             return optjoin.getOrder(res);
 
