@@ -71,14 +71,25 @@ public class BufferPool {
         }
         public void releaseLock(PageId pid,TransactionId tid){
             ArrayList<TransactionId> temp=pageTransactions.get(pid);
+            ArrayList<PageId> temp1=transactionPages.get(tid);
             if(temp == null){
                 return;
+            }
+            if(temp1==null){
+                return;
+            }
+            if(temp1.size()==1){
+                transactionPages.remove(tid);
+                temp1.remove(pid);
+            } else {
+                temp1.remove(pid);
             }
             if(temp.size()==1){
                 pageTransactions.remove(pid);
                 pageLock.remove(pid);
+                temp.remove(tid);
             } else {
-                temp.remove(pid);
+                temp.remove(tid);
             }
         }
         public ArrayList<PageId> getPageIds(TransactionId tid){
@@ -194,12 +205,15 @@ public class BufferPool {
         // some code goes here
         // not necessary for proj1
         ArrayList<PageId>pids=manager.getPageIds(tid);
+        if(pids==null){
+            return;
+        }
         int size=pids.size();
         if(commit){
             flushPages(tid);
         } else {
-            for(int i=0;i<size;i++){
-                PageId temp=pids.get(i);
+            while(!pids.isEmpty()){
+                PageId temp=pids.get(0);
                 HeapPage tempPage=(HeapPage)pool.get(temp);
                 if(tempPage != null){
                     tempPage=tempPage.getBeforeImage();
@@ -321,7 +335,6 @@ public class BufferPool {
         Enumeration<Page> e=pool.elements();
         while(e.hasMoreElements()){
             Page temp=e.nextElement();
-            System.out.println(temp.isDirty());
             if(temp.isDirty()==null){
                 PageId ids=temp.getId();
                 pool.remove(ids);
